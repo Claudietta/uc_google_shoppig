@@ -1,0 +1,75 @@
+<?php
+/**
+ * @file
+ * Installation functions for Google Base.
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function uc_google_shopping_install() {
+  //Create a CCK field to store the Brand for every single product
+    module_load_include('inc', 'content', 'includes/content.crud');
+    $field = array();
+    $field['field_name'] = 'field_brand_name';
+    $field['type_name'] = 'product';
+    $field['type'] = 'text';
+    $field['module'] = 'text';
+    $field['required'] = FALSE;
+    $field['widget_type'] = 'text_textfield';
+    $field['active'] = TRUE;
+    content_field_instance_create($field);
+    
+     $field = content_fields('field_brand_name', 'product');
+     $field['widget']['label'] = 'Brand';
+     $field['widget']['weight'] = -3;
+     $field['widget']['type'] = 'text_textfield';
+     $field['display_settings']['weight'] = -3;
+     $field['display_settings']['label']['format'] = 'hidden';
+     $field['display_settings']['teaser']['format'] = 'default';
+     $field['display_settings']['full']['format'] = 'default';
+     content_field_instance_update($field);
+       
+    
+    content_notify('install', 'uc_google_shopping');    
+}
+    
+    
+/**
+* Implementation of hook_enable().
+*
+* Notify content module when this module is enabled.
+*/
+function uc_google_shopping_enable() {
+  drupal_load('module', 'content');
+  content_notify('enable', 'uc_google_shopping');
+}
+
+/**
+ * Implementation of hook_disable().
+ *
+ * Notify content module when this module is disabled.
+ */
+function uc_google_shopping_disable() {
+  drupal_load('module', 'content');
+  content_notify('disable', 'uc_google_shopping');
+}
+
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function uc_google_shopping_uninstall() {
+  // Delete the variables we created.
+  variable_del('google_base_feed_title');
+  variable_del('google_base_feed_description');
+  variable_del('google_base_feed_link');
+  variable_del('google_base_brand_name');
+  
+  //Delete specific CCK field
+  module_load_include('inc', 'content', 'includes/content.crud');
+  content_field_instance_delete('field_brand_name','product');
+  content_notify('uninstall', 'uc_google_shopping');
+  content_clear_type_cache(TRUE);
+  menu_rebuild();
+}

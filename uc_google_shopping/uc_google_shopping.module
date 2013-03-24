@@ -1,0 +1,173 @@
+<?php
+// $Id$
+
+/**
+ * Implementation of hook_menu().
+ */
+function uc_google_shopping_menu() {
+  $items = array();
+  $items['admin/store/settings/google_shopping'] = array(
+    'title' => 'Google Base Feed',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_google_shopping_settings_form'),
+    'access arguments' => array('administer store'),
+    'description' => 'Configure the google base feed settings',
+  );
+  $items['products/google_shopping.xml'] = array(
+    'title' => 'Google Base RSS Feed',
+    'description' => 'Export of products in RSS for Google Base',
+    'page callback' => 'uc_google_shopping',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+
+/**
+ * Define the admin settings form
+ */
+function uc_google_shopping_settings_form() {
+  $form['google_shopping_feed_title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Feed Title'),
+    '#default_value' => variable_get('google_shopping_feed_title', 'My Google Base RSS Feed'),
+  );
+  $form['google_shopping_feed_description'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Feed Description'),
+    '#default_value' => variable_get('google_shopping_feed_description', 'My Google Base RSS Feed Description'),
+  );
+  $form['google_shopping_feed_link'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Feed Link (Usually is the url of shop)'),
+    '#default_value' => variable_get('google_shopping_feed_link', $GLOBALS['base_url']),
+  );
+  $form['google_shopping_brand_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Default Brand Name for products (Use Product Fields to set single specific Brand Name)'),
+    '#default_value' => variable_get('google_shopping_brand_name', ''),
+  );
+  return system_settings_form($form);
+}
+
+/**
+ * Custom function to get Zone/Province Name ...
+ * @param int $zone
+ * @return boolean
+ */
+function uc_get_zone_name($zone = NULL) {
+  if (empty($zone)) {
+    return FALSE;
+  }
+
+  $result = db_query("SELECT zone_name FROM {uc_zones} WHERE zone_id = %d", $zone);
+
+  if ($row = db_fetch_object($result)) {
+    return $row->zone_name;
+  }
+
+  return FALSE;
+}
+
+/**
+ * Custom function to get Country Name ...
+ * @param int $country_id
+ * @return boolean
+ */
+function uc_get_nation_name($country_id = NULL) {
+  if (empty($country_id)) {
+    return FALSE;
+  }
+
+  $result = db_query("SELECT country_name FROM {uc_countries} WHERE country_id = %d AND version > 0", $country_id);
+
+  if ($row = db_fetch_object($result)) {
+    return $row->country_name;
+  }
+
+  return FALSE;
+
+}
+
+
+
+/**
+ * Create the google base feed
+ */
+function uc_google_shopping() {
+  
+  //Setting some useful variables
+  $store_zip = variable_get('uc_store_postal_code', '');
+  $store_addy = variable_get('uc_store_street1', '');
+  $store_city = variable_get('uc_store_city', '');
+  $nation = uc_get_nation_name(variable_get('uc_store_country', ''));
+  $province = uc_get_zone_name(variable_get('uc_store_zone', ''));
+  $brand = variable_get('google_shopping_brand_name', '');
+  
+  
+  
+  // Set header of feed
+  $output = '<?xml version="1.0" encoding="UTF-8" ?>';
+  $output .= '<rss version ="2.0" xmlns:g="http://base.google.com/ns/1.0">';
+  $output .= '<channel>';
+  $output .= '<title>'. variable_get('google_shopping_feed_title', 'My Google Base RSS Feed') .'</title>';
+  $output .= '<description>'. variable_get('google_shopping_feed_description', 'My Google Base RSS Feed Description') .'</description>';
+  $output .= '<link>'. variable_get('google_shopping_feed_link', $GLOBALS['base_url']) .'</link>';
+
+  // Get active products
+
+  $result = db_query("SELECT node.nid FROM {uc_products} INNER JOIN {node} ON uc_products.nid = node.nid WHERE node.status = 1");
+  while ($node = db_fetch_object($result)) {
+    $product = node_load($node->nid);
+    // Grab terms for products
+    $terms = array();
+    foreach ($product->taxonomy as $term) {
+      $ancestors = taxonomy_get_parents_all($term->tid);
+      foreach ($ancestors as $ancestor) {
+        $terms[] = $ancestor->name;
+      }
+    }
+
+
+	// Build google base rss
+	$output .= "<item>\n";
+    $output .= "<title>" . check_plain($product->title) . "</title>\n";
+    if ((isset($product->field_brand_name))&&($product->field_brand_name[0]['value']!=NULL)) {
+      $output .= "<g:brand>".$product->field_brand_name[0]['value']."</g:brand>\n";
+    } else {
+      $output .= "<g:brand>".$brand."</g:brand>\n";
+    }
+    $output .= "<description>" . check_plain($product->body) . "</description>\n";
+    $output .= "<guid>" . htmlentities($product->model) . "</guid>\n";
+    if (isset($product->field_image_cache) && file_exists($product->field_image_cache[0]['filepath'])){
+      $output .= "<g:image_link>" . $GLOBALS['base_url'] .'/'. ($product->field_image_cache[0]['filepath']) . "</g:image_link>\n"; 
+    }
+    $output .= "<link>" . $GLOBALS['base_url'] .'/'. drupal_get_path_alias('node/'. $product->nid) . "</link>\n";
+    if ($product->weight>0) {
+      $output .= "<g:weight>" . $product->weight . ' ' . $product->weight_units . "</g:weight>\n";
+    }
+    $output .= "<g:price>" . uc_currency_format($product->sell_price) ."</g:price>\n";
+    $output .= "<g:product_type>" . check_plain(implode(',', $terms)) . "</g:product_type>\n";
+    $output .= "<g:mpn>" . htmlentities($product->model) . "</g:mpn>\n";
+    $output .= "<g:id>" . htmlentities($product->model) . "</g:id>\n";
+    $output .= "<g:location>".$store_addy.", ".$store_city.", ".$store_zip." ".$province. ", ".$nation."</g:location>\n";
+    $output .= "<g:quantity>" . $product->pkg_qty . "</g:quantity>\n";
+    $output .= "<g:condition>new</g:condition>\n";
+    if ($product->shippable == 1) {
+      $output .= "<g:availability>in stock</g:availability>\n";
+    } else {
+      $output .= "<g:availability>out of stock</g:availability>\n";
+    }
+    $output .= "</item>\n";
+	$output .= "\n";
+  }
+	
+  $output .= "</channel>\n";
+  $output .= "</rss>";
+  
+  drupal_set_header('Content-Type: application/xml');
+  print($output);
+  module_invoke_all('exit');
+}

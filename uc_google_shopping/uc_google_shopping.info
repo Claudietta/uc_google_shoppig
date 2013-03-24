@@ -1,0 +1,7 @@
+; $Id$
+name = "Google Shopping Feed"
+description = "Export products to google shopping feed"
+core = 6.x
+dependencies[] = uc_product
+package = "Ubercart - extra"
+version = "6.x-dev"
